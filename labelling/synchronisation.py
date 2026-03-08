@@ -30,7 +30,8 @@ def _extract_unix_timestamp_to_seconds(filepath):
 
 
 def estimate_sample_rates(video_timestamps_path, data_dir):
-    # Estimate the sample rates of the data files by comparing the number of samples to the video durations
+    # Estimate the sample rates using the actual data duration (video duration minus offset),
+    # where offset accounts for data collection starting before/after the video
     videos = pd.read_csv(video_timestamps_path)
     rows = []
 
@@ -38,6 +39,7 @@ def estimate_sample_rates(video_timestamps_path, data_dir):
         rec_id = row["id"]
 
         video_duration_s = _parse_duration_seconds(row["duration"])
+        video_start_s = _hhmmss_to_seconds(row["timestamp"])
 
         matches = glob.glob(os.path.join(data_dir, f"{rec_id}_*.csv"))
         if not matches:
@@ -45,14 +47,21 @@ def estimate_sample_rates(video_timestamps_path, data_dir):
             continue
 
         filepath = matches[0]
+        data_start_s = _extract_unix_timestamp_to_seconds(filepath)
+        offset_s = data_start_s - video_start_s
+
+        # Data duration = video duration minus offset (negative offset = data started early = more data)
+        data_duration_s = video_duration_s - offset_s
 
         num_samples = len(pd.read_csv(filepath))
-        sample_rate_hz = num_samples / video_duration_s
+        sample_rate_hz = num_samples / data_duration_s
 
         rows.append({
             "id": rec_id,
             "num_samples": num_samples,
             "video_duration_s": video_duration_s,
+            "offset_s": offset_s,
+            "data_duration_s": data_duration_s,
             "sample_rate_hz": sample_rate_hz,
         })
 
