@@ -92,6 +92,42 @@ def synchronisation_mapping(video_timestamps_path, data_dir):
     return mapping
 
 
+def _seconds_to_hhmmss(total_seconds):
+    # Convert seconds since midnight to HH:MM:SS string
+    h = total_seconds // 3600
+    m = (total_seconds % 3600) // 60
+    s = total_seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def create_times_csv(video_timestamps_path, data_dir, output_path):
+    # Write a CSV with video start time, data start time, and offset for each recording
+    videos = pd.read_csv(video_timestamps_path)
+    rows = []
+
+    for _, row in videos.iterrows():
+        rec_id = row["id"]
+        video_start_s = _hhmmss_to_seconds(row["timestamp"])
+
+        matches = glob.glob(os.path.join(data_dir, f"{rec_id}_*.csv"))
+        if not matches:
+            print(f"Warning: no data file found for {rec_id}")
+            continue
+
+        data_start_s = _extract_unix_timestamp_to_seconds(matches[0])
+        offset_s = data_start_s - video_start_s
+
+        rows.append({
+            "id": rec_id,
+            "video_start": _seconds_to_hhmmss(video_start_s),
+            "data_start": _seconds_to_hhmmss(data_start_s),
+            "offset_s": offset_s,
+        })
+
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+    print(f"Times CSV written to {output_path}")
+
+
 def create_labelled_data():
     # TODO
     pass
@@ -107,3 +143,6 @@ if __name__ == "__main__":
 
     mapping = synchronisation_mapping(video_timestamps_path, data_dir)
     print(mapping)
+
+    times_csv_path = os.path.join(_root, "data", "times.csv")
+    create_times_csv(video_timestamps_path, data_dir, times_csv_path)
