@@ -12,6 +12,58 @@ def _parse_duration_seconds(duration_str):
     return minutes * 60 + seconds
 
 
+def _normalize_text(value):
+    # Remove whitespace artifacts from manually edited CSV files.
+    if pd.isna(value):
+        return ""
+    text = str(value)
+    # Strip UTF-8 NBSP (\xc2\xa0) decoded through latin-1, bare NBSP, and BOM.
+    text = text.replace("\xc2\xa0", " ").replace("\xa0", " ").replace("\ufeff", "")
+    # Remove any remaining non-printable / non-ASCII artefact characters (e.g. stray Â).
+    text = re.sub(r"[^\x20-\x7e:.\-/]", "", text)
+    return text.strip()
+
+
+def _parse_time_into_video_seconds(raw_value):
+    # Accept either a single time (e.g. 0:10) or a range (e.g. 0:12-0:14).
+    text = _normalize_text(raw_value)
+    if "-" in text:
+        text = text.split("-", 1)[0].strip()
+
+    if ":" in text:
+        return _parse_duration_seconds(text)
+
+    # Some files use M.SS (e.g. 0.23, 1.04) instead of MM:SS.
+    if re.fullmatch(r"\d+\.\d{1,2}", text):
+        minutes_str, seconds_str = text.split(".", 1)
+        minutes = int(minutes_str)
+        seconds = int(seconds_str)
+        if seconds < 60:
+            return minutes * 60 + seconds
+
+    # Fallback for true decimal-minute values.
+    return int(round(float(text) * 60))
+
+
+def _extract_rec_id_from_label_filename(label_file):
+    basename = os.path.basename(label_file)
+    match = re.match(r"(.+?)(?:_labels|-labels)\.csv$", basename, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _get_label_columns(labels_df):
+    normalized_to_actual = {}
+    for col in labels_df.columns:
+        clean_col = re.sub(r"[^a-z0-9]+", "", _normalize_text(col).lower())
+        normalized_to_actual[clean_col] = col
+
+    time_col = normalized_to_actual.get("timeintovideo")
+    label_col = normalized_to_actual.get("label")
+    return time_col, label_col
+
+
 def _hhmmss_to_seconds(hhmmss):
     # Convert HHMMSS integer (e.g. 144141 -> 14*3600 + 41*60 + 41) to seconds since midnight
     hh = hhmmss // 10000
@@ -145,8 +197,11 @@ def create_labelled_data(labels_folder, video_timestamps_path, data_dir, labelle
     all_labelled = []
 
     # go through labels folder
-    for label_file in glob.glob(os.path.join(labels_folder, "*_labels.csv")):
-        rec_id = os.path.basename(label_file).replace("_labels.csv", "")
+    for label_file in glob.glob(os.path.join(labels_folder, "*labels.csv")):
+        rec_id = _extract_rec_id_from_label_filename(label_file)
+        if not rec_id:
+            print(f"Warning: could not parse recording id from {os.path.basename(label_file)}, skipping")
+            continue
 
         if rec_id not in mapping:
             print(f"Warning: no sync mapping for {rec_id}, skipping")
@@ -161,12 +216,21 @@ def create_labelled_data(labels_folder, video_timestamps_path, data_dir, labelle
             continue
 
         data_df = pd.read_csv(matches[0])
-        labels_df = pd.read_csv(label_file)
+        labels_df = pd.read_csv(label_file, encoding="latin-1")
+        time_col, label_col = _get_label_columns(labels_df)
+        if not time_col or not label_col:
+            print(f"Warning: {os.path.basename(label_file)} missing required columns, skipping")
+            continue
+
         window_samples = int(window_s * sample_rate)
 
         for _, label_row in labels_df.iterrows():
-            time_into_video_s = _parse_duration_seconds(label_row["time_into_video"])
-            label = label_row["label"]
+            time_into_video_raw = _normalize_text(label_row[time_col])
+            label = _normalize_text(label_row[label_col])
+            if not time_into_video_raw or not label:
+                continue
+
+            time_into_video_s = _parse_time_into_video_seconds(time_into_video_raw)
 
             # align time_into_video to data: offset_s = data_start - video_start
             # so data_time = time_into_video - offset_s
@@ -176,12 +240,12 @@ def create_labelled_data(labels_folder, video_timestamps_path, data_dir, labelle
             end_idx = min(len(data_df), center_idx + window_samples + 1)
 
             if center_idx < 0 or center_idx >= len(data_df):
-                print(f"Warning: {rec_id} label '{label}' at {label_row['time_into_video']} maps outside data, skipping")
+                print(f"Warning: {rec_id} label '{label}' at {time_into_video_raw} maps outside data, skipping")
                 continue
 
             window_df = data_df.iloc[start_idx:end_idx].copy().reset_index(drop=True)
             window_df.insert(0, "sample_offset", range(start_idx - center_idx, end_idx - center_idx))
-            window_df.insert(0, "time_into_video", label_row["time_into_video"])
+            window_df.insert(0, "time_into_video", time_into_video_raw)
             window_df.insert(0, "label", label)
             window_df.insert(0, "rec_id", rec_id)
 
@@ -195,7 +259,97 @@ def create_labelled_data(labels_folder, video_timestamps_path, data_dir, labelle
     csv_df = result_df[["rec_id", "time_into_video", "label", "EDA", "PPG1"]].rename(columns={"PPG1": "PPG"})
     csv_df.to_csv(labelled_data_output_path, index=False)
     print(f"Labelled data written to {labelled_data_output_path} ({len(result_df)} rows, {len(all_labelled)} windows)")
+
+    output_dir = os.path.dirname(labelled_data_output_path)
+    for participant_id, participant_df in csv_df.groupby(csv_df["rec_id"].str.split("-").str[0]):
+        participant_output_path = os.path.join(output_dir, f"labelled_data_{participant_id}.csv")
+        participant_df.to_csv(participant_output_path, index=False)
+        print(f"Participant file written: {participant_output_path} ({len(participant_df)} rows)")
+
     return result_df
+
+
+def create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, output_dir):
+    # For each recording, compute freq = round(num_entries / video_duration_s).
+    # Each row i maps to video_time = i / freq seconds.
+    # Rows whose video_time falls within a labelled range receive that label; others are blank.
+    videos = pd.read_csv(video_timestamps_path)
+    video_info = {row["id"]: row for _, row in videos.iterrows()}
+
+    all_dfs = []
+
+    for label_file in sorted(glob.glob(os.path.join(labels_folder, "*labels.csv"))):
+        rec_id = _extract_rec_id_from_label_filename(label_file)
+        if not rec_id:
+            continue
+
+        if rec_id not in video_info:
+            print(f"Warning: no video info for {rec_id}, skipping")
+            continue
+
+        video_duration_s = _parse_duration_seconds(video_info[rec_id]["duration"])
+
+        matches = glob.glob(os.path.join(data_dir, f"{rec_id}_*.csv"))
+        if not matches:
+            print(f"Warning: no data file for {rec_id}, skipping")
+            continue
+
+        data_df = pd.read_csv(matches[0])
+        n = len(data_df)
+        freq = round(n / video_duration_s)
+
+        labels_df = pd.read_csv(label_file, encoding="latin-1")
+        time_col, label_col = _get_label_columns(labels_df)
+        if not time_col or not label_col:
+            print(f"Warning: {os.path.basename(label_file)} missing required columns, skipping")
+            continue
+
+        # Build label ranges: list of (start_s, end_s, label_str)
+        label_ranges = []
+        for _, label_row in labels_df.iterrows():
+            time_raw = _normalize_text(label_row[time_col])
+            label_str = _normalize_text(label_row[label_col])
+            if not time_raw or not label_str:
+                continue
+            if "-" in time_raw:
+                parts = time_raw.split("-", 1)
+                start_s = _parse_time_into_video_seconds(parts[0])
+                end_s = _parse_time_into_video_seconds(parts[1])
+            else:
+                start_s = _parse_time_into_video_seconds(time_raw)
+                end_s = start_s + 1
+            label_ranges.append((start_s, end_s, label_str))
+
+        # Vectorised label assignment: compute video time for every row
+        video_times = pd.Series(range(n), dtype=float) / freq
+        row_labels = pd.Series([""] * n, dtype=object)
+        for start_s, end_s, label_str in label_ranges:
+            mask = (video_times >= start_s) & (video_times < end_s)
+            row_labels[mask] = label_str
+
+        result_df = data_df[["EDA", "PPG1"]].rename(columns={"PPG1": "PPG"}).copy()
+        result_df.insert(0, "label", row_labels.values)
+        result_df.insert(0, "rec_id", rec_id)
+
+        out_path = os.path.join(output_dir, f"full_labelled_{rec_id}.csv")
+        result_df.to_csv(out_path, index=False)
+        print(f"Full labelled data written: {out_path} ({n} rows, freq={freq} Hz)")
+
+        all_dfs.append(result_df)
+
+    if not all_dfs:
+        print("No full labelled data generated.")
+        return None
+
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+
+    # Per-participant files (combining easy + hard)
+    for participant_id, p_df in combined_df.groupby(combined_df["rec_id"].str.split("-").str[0]):
+        p_path = os.path.join(output_dir, f"full_labelled_{participant_id}.csv")
+        p_df.to_csv(p_path, index=False)
+        print(f"Participant full labelled file written: {p_path} ({len(p_df)} rows)")
+
+    return combined_df
 
 
 if __name__ == "__main__":
@@ -215,3 +369,6 @@ if __name__ == "__main__":
     labels_folder = os.path.join(_root, "labelling", "labels")
     labelled_data_output_path = os.path.join(_root, "data", "labelled_data", "labelled_data.csv")
     df = create_labelled_data(labels_folder, video_timestamps_path, data_dir, labelled_data_output_path)
+
+    full_output_dir = os.path.join(_root, "data", "labelled_data")
+    create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, full_output_dir)
