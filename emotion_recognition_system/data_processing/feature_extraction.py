@@ -1,10 +1,17 @@
 """
 Entry point for all feature extraction.
-Run from repository root:
-python -m data_processing.feature_extraction
+Can be run directly or as a module:
+    python emotion_recognition_system/data_processing/feature_extraction.py
+    python -m data_processing.feature_extraction  (from emotion_recognition_system/)
 """
 
 import os
+import sys
+
+# Ensure emotion_recognition_system/ is on the path when run directly
+_workspace = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _workspace not in sys.path:
+    sys.path.insert(0, _workspace)
 
 from utils.merge_features import merge_windowed_features
 from utils.process_eda import get_eda_measures_windowed

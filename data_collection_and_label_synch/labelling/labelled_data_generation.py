@@ -81,6 +81,7 @@ def _extract_unix_timestamp_to_seconds(filepath):
     return int(match.group(1)) % 86400  # Modulo 86400 to get seconds since midnight
 
 
+# Sanity check - sensor sample rate should be around 64 Hz, but can vary
 def estimate_sample_rates(video_timestamps_path, data_dir):
     # Estimate the sample rates using the actual data duration (video duration minus offset),
     # where offset accounts for data collection starting before/after the video
@@ -189,6 +190,7 @@ def create_times_csv(video_timestamps_path, data_dir, output_path):
     print(f"Times CSV written to {output_path}")
 
 
+# OLD. Not used
 def create_labelled_data(labels_folder, video_timestamps_path, data_dir, labelled_data_output_path, window_s=1.0):
     # get rate estimates and synchronisation mapping
     _, sample_rate = estimate_sample_rates(video_timestamps_path, data_dir)
@@ -269,12 +271,13 @@ def create_labelled_data(labels_folder, video_timestamps_path, data_dir, labelle
     return result_df
 
 
-def create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, output_dir):
-    # For each recording, compute freq = round(num_entries / video_duration_s).
-    # Each row i maps to video_time = i / freq seconds.
-    # Rows whose video_time falls within a labelled range receive that label; others are blank.
+def create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, output_dir, sample_rate=64.0):
+    # For each recording, assign emotion labels to every row using the video-sync offset.
+    # Row i corresponds to video_time = i / sample_rate + offset_s, where
+    # offset_s = data_start - video_start (from synchronisation_mapping).
     videos = pd.read_csv(video_timestamps_path)
     video_info = {row["id"]: row for _, row in videos.iterrows()}
+    offset_mapping = synchronisation_mapping(video_timestamps_path, data_dir)
 
     all_dfs = []
 
@@ -287,7 +290,11 @@ def create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, ou
             print(f"Warning: no video info for {rec_id}, skipping")
             continue
 
-        video_duration_s = _parse_duration_seconds(video_info[rec_id]["duration"])
+        if rec_id not in offset_mapping:
+            print(f"Warning: no sync offset for {rec_id}, skipping")
+            continue
+
+        offset_s = offset_mapping[rec_id]
 
         matches = glob.glob(os.path.join(data_dir, f"{rec_id}_*.csv"))
         if not matches:
@@ -296,7 +303,6 @@ def create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, ou
 
         data_df = pd.read_csv(matches[0])
         n = len(data_df)
-        freq = round(n / video_duration_s)
 
         labels_df = pd.read_csv(label_file, encoding="latin-1")
         time_col, label_col = _get_label_columns(labels_df)
@@ -320,8 +326,9 @@ def create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, ou
                 end_s = start_s + 1
             label_ranges.append((start_s, end_s, label_str))
 
-        # Vectorised label assignment: compute video time for every row
-        video_times = pd.Series(range(n), dtype=float) / freq
+        # Map each row to its video timestamp using the sync offset.
+        # data row i was recorded at: video_time = i / sample_rate + offset_s
+        video_times = pd.Series(range(n), dtype=float) / sample_rate + offset_s
         row_labels = pd.Series([""] * n, dtype=object)
         for start_s, end_s, label_str in label_ranges:
             mask = (video_times >= start_s) & (video_times < end_s)
@@ -333,7 +340,7 @@ def create_full_labelled_data(labels_folder, video_timestamps_path, data_dir, ou
 
         out_path = os.path.join(output_dir, f"full_labelled_{rec_id}.csv")
         result_df.to_csv(out_path, index=False)
-        print(f"Full labelled data written: {out_path} ({n} rows, freq={freq} Hz)")
+        print(f"Full labelled data written: {out_path} ({n} rows, sample_rate={sample_rate} Hz, offset={offset_s:.1f}s)")
 
         all_dfs.append(result_df)
 
@@ -357,8 +364,9 @@ if __name__ == "__main__":
     video_timestamps_path = os.path.join(_root, "data", "video_timestamps.csv")
     data_dir = os.path.join(_root, "data", "raw_data")
 
-    # sample_rates_df, avg_sample_rate = estimate_sample_rates(video_timestamps_path, data_dir)
-    # print(sample_rates_df)
+    print("Estimating sample rates for sanity check. Should be around 64Hz")
+    sample_rates_df, avg_sample_rate = estimate_sample_rates(video_timestamps_path, data_dir)
+    print(sample_rates_df)
 
     # mapping = synchronisation_mapping(video_timestamps_path, data_dir)
     # print(mapping)
