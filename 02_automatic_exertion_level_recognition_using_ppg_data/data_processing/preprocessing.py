@@ -7,9 +7,12 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import LeaveOneGroupOut
 
 
-def load_and_clean(csv_path, relabel=False):
+def load_and_clean(csv_path):
     """
     Load merged windowed features and return feature matrix components.
+
+    Labels are expected to already contain ground-truth emotion labels
+    (excitement, frustration, neutral) — not session conditions (easy/hard).
 
     Returns:
         X: DataFrame of numeric features (subject excluded)
@@ -28,17 +31,11 @@ def load_and_clean(csv_path, relabel=False):
     # Keep rows where at least one modality succeeded.
     df = df[~(ppg_failed & eda_failed)].copy()
 
-    if relabel:
-        label_map = {
-            "easy": "excitement",
-            "hard": "frustration",
-        }
-        df["label"] = df["label"].map(lambda x: label_map.get(x, x))
-
     df["sub_id"] = df["sub_id"].astype(str)
 
     meta_cols = {
         "sub_id", "label", "window_index", "window_start_sec",
+        "window_start_sec_ppg", "window_start_sec_eda",
         "status", "status_ppg", "status_eda",
     }
     feature_cols = [c for c in df.columns if c not in meta_cols]
@@ -92,6 +89,8 @@ def run_loso_cv(estimator, X, y, groups):
     return {
         "fold_results": fold_results,
         "labels": labels,
+        "y_true": y_true_all,
+        "y_pred": y_pred_all,
         "confusion_matrix": confusion_matrix(y_true_all, y_pred_all, labels=labels),
         "overall_report": classification_report(y_true_all, y_pred_all, output_dict=True, zero_division=0),
     }
