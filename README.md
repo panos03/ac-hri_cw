@@ -81,55 +81,33 @@ ac-hri_cw/
 
 ---
 
-## Models & Results
+## Models
 
-6 experiments: **Random Forest** and **SVM** × **EDA-only / PPG-only / Combined**, evaluated with Leave-One-Subject-Out cross-validation.
-
-| Experiment | N | Accuracy | Macro F1 |
-|------------|---|----------|----------|
-| RF PPG-only | 39 | **56.4%** | **0.516** |
-| RF EDA-only | 88 | 45.5% | 0.291 |
-| RF Combined | 88 | 44.3% | 0.245 |
-| SVM Combined | 88 | 30.7% | 0.275 |
-| SVM PPG-only | 39 | 41.0% | 0.219 |
-| SVM EDA-only | 88 | 25.0% | 0.212 |
-
-Labels: **excitement** (51 windows), **frustration** (25), **neutral** (12). Class-balanced weights used to mitigate imbalance.
+6 experiments: **Random Forest** and **SVM** × **EDA-only / PPG-only / Combined**, evaluated with Leave-One-Subject-Out cross-validation (7 folds). Results are written to `emotion_recognition_system/results/` after running the notebook.
 
 ---
 
 ## Usage
 
-**Re-run feature extraction** (from `emotion_recognition_system/`):
+**1. Regenerate labelled data** (only needed if raw data or annotations change):
 ```bash
-python -m data_processing.feature_extraction
+python data_collection_and_label_synch/labelling/labelled_data_generation.py
 ```
 
-**Re-run relabelling**:
-```python
-from data_processing.relabel import relabel_features
-relabel_features(
-    features_csv_path='features/combined_features_windowed.csv',
-    labels_folder='../data_collection_and_label_synch/labelling/labels',
-    times_csv_path='../data_collection_and_label_synch/data/times.csv',
-    output_csv_path='features/emotion_features.csv',
-)
+**2. Run feature extraction**:
+```bash
+python emotion_recognition_system/data_processing/feature_extraction.py
 ```
 
-**Train models** (from `emotion_recognition_system/`):
-```bash
-python -m models.train
-```
+**3. Relabelling, training, and analysis** — run `emotion_recognition_system/04_model_training_and_evaluation.ipynb` top to bottom.
 
 **Inference**:
 ```python
 from models.predict import EmotionPredictor
-predictor = EmotionPredictor('models/trained/RF_EDA-only.pkl')
+predictor = EmotionPredictor.load('models/trained/RF_EDA-only.pkl')
 result = predictor.predict_from_raw(eda_window)   # 1920 samples @ 64 Hz
 # result: {'prediction': 'excitement', 'confidence': 0.72, 'probabilities': {...}}
 ```
-
-**Full walkthrough**: `04_model_training_and_evaluation.ipynb`
 
 ---
 
