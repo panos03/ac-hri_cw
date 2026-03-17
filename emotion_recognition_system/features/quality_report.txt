@@ -1,18 +1,17 @@
 Windowed Feature Merge Quality Report
 
-PPG windows: 116
-EDA windows: 250
-Merged windows (outer join): 495
-Windows with both modalities: 81
+PPG windows: 70
+EDA windows: 121
+Merged windows (outer join): 121
+Windows with both modalities: 70
 PPG-only windows: 0
-EDA-only windows: 66
+EDA-only windows: 51
 
 Windows per subject:
-- 001: 24
-- 002: 21
-- 003: 16
-- 004: 17
-- 005: 16
-- 006: 14
-- 007: 13
-- labelled_data: 374
+- 1: 24
+- 2: 21
+- 3: 16
+- 4: 17
+- 5: 16
+- 6: 14
+- 7: 13
