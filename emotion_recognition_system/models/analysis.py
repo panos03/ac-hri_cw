@@ -162,7 +162,7 @@ def plot_modality_comparison(experiments, output_dir="results"):
     df = pd.DataFrame(rows)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    colors = {"EDA-only": "#4878CF", "Combined": "#D65F5F", "PPG-only": "#B47CC7"}
+    colors = {"EDA-only": "#4878CF", "Combined": "#D65F5F", "PPG-only": "#B47CC7", "IntermediateFusion": "#6ACC65"}
 
     x = np.arange(len(df))
     bars = ax.bar(x, df["F1_macro"], color=[colors.get(m, "grey") for m in df["Modality"]])

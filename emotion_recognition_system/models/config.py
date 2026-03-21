@@ -42,3 +42,5 @@ SVM_GRID = dict(
     C=[0.1, 1.0, 10.0],
     gamma=["scale", "auto"],
 )
+
+PCA_VARIANCE_THRESHOLD = 0.95

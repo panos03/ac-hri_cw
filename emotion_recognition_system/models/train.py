@@ -3,16 +3,19 @@
 import os
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-from sklearn.pipeline import make_pipeline
+from sklearn.pipeline import make_pipeline, Pipeline as SkPipeline
 from sklearn.preprocessing import StandardScaler
 
-from data_processing.preprocessing import load_and_clean, run_loso_cv
+from data_processing.preprocessing import (
+    load_and_clean, run_loso_cv, build_fusion_preprocessor,
+)
 from models.config import (
     RF_PARAMS, SVM_PARAMS, SVM_GRID,
     PPG_FEATURES, EDA_FEATURES, ALL_FEATURES,
-    RANDOM_SEED,
+    RANDOM_SEED, PCA_VARIANCE_THRESHOLD,
 )
 
 
@@ -85,7 +88,32 @@ def run_all_experiments(csv_path, output_dir="results"):
             acc = result["overall_report"]["accuracy"]
             print(f"F1={f1:.3f}  Acc={acc:.3f}  (n={len(X_sub)})")
 
-    
+    # --- Intermediate fusion experiments ---
+    print("\nIntermediate Fusion experiments:")
+    preprocessor = build_fusion_preprocessor(
+        eda_cols, ppg_cols, PCA_VARIANCE_THRESHOLD,
+    )
+    for model_name, model in models.items():
+        exp_name = f"{model_name}_IntermediateFusion"
+        print(f"Running: {exp_name} ...", end=" ")
+
+        fusion_pipeline = SkPipeline([
+            ('preprocessor', clone(preprocessor)),
+            ('classifier', clone(model)),
+        ])
+
+        result = run_loso_cv(fusion_pipeline, X[combined_cols], y, groups)
+        result["model_name"] = model_name
+        result["modality"] = "IntermediateFusion"
+        result["feature_cols"] = combined_cols
+        result["n_samples"] = len(X)
+        experiments[exp_name] = result
+
+        f1 = result["overall_report"]["macro avg"]["f1-score"]
+        acc = result["overall_report"]["accuracy"]
+        print(f"F1={f1:.3f}  Acc={acc:.3f}  (n={len(X)})")
+
+
     print("\nSVM hyperparameter sweep on EDA-only:")
     best_f1 = -1
     best_params = {}
