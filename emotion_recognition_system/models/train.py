@@ -122,7 +122,7 @@ def run_all_experiments(csv_path, output_dir="results"):
         eda_cols, ppg_cols, PCA_VARIANCE_THRESHOLD,
     )
     for model_name, model in models.items():
-        exp_name = f"{model_name}_IntermediateFusion_PPGonly"
+        exp_name = f"{model_name}_IntermediateFusion_Complete"
         print(f"Running: {exp_name} ...", end=" ")
 
         fusion_pipeline = SkPipeline([
@@ -132,7 +132,7 @@ def run_all_experiments(csv_path, output_dir="results"):
 
         result = run_loso_cv(fusion_pipeline, X_ppg_avail, y_ppg_avail, g_ppg_avail)
         result["model_name"] = model_name
-        result["modality"] = "IntermediateFusion_PPGonly"
+        result["modality"] = "IntermediateFusion_Complete"
         result["feature_cols"] = combined_cols
         result["n_samples"] = len(X_ppg_avail)
         experiments[exp_name] = result
