@@ -113,6 +113,33 @@ def run_all_experiments(csv_path, output_dir="results"):
         acc = result["overall_report"]["accuracy"]
         print(f"F1={f1:.3f}  Acc={acc:.3f}  (n={len(X)})")
 
+    # --- Intermediate fusion (PPG-available only) ---
+    print("\nIntermediate Fusion (PPG-available only) experiments:")
+    X_ppg_avail = X.loc[ppg_present, combined_cols].copy().reset_index(drop=True)
+    y_ppg_avail = y[ppg_present].reset_index(drop=True)
+    g_ppg_avail = groups[ppg_present].reset_index(drop=True)
+    ppg_avail_preprocessor = build_fusion_preprocessor(
+        eda_cols, ppg_cols, PCA_VARIANCE_THRESHOLD,
+    )
+    for model_name, model in models.items():
+        exp_name = f"{model_name}_IntermediateFusion_PPGonly"
+        print(f"Running: {exp_name} ...", end=" ")
+
+        fusion_pipeline = SkPipeline([
+            ('preprocessor', clone(ppg_avail_preprocessor)),
+            ('classifier', clone(model)),
+        ])
+
+        result = run_loso_cv(fusion_pipeline, X_ppg_avail, y_ppg_avail, g_ppg_avail)
+        result["model_name"] = model_name
+        result["modality"] = "IntermediateFusion_PPGonly"
+        result["feature_cols"] = combined_cols
+        result["n_samples"] = len(X_ppg_avail)
+        experiments[exp_name] = result
+
+        f1 = result["overall_report"]["macro avg"]["f1-score"]
+        acc = result["overall_report"]["accuracy"]
+        print(f"F1={f1:.3f}  Acc={acc:.3f}  (n={len(X_ppg_avail)})")
 
     print("\nSVM hyperparameter sweep on EDA-only:")
     best_f1 = -1
