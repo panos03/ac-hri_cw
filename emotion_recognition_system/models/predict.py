@@ -16,7 +16,7 @@ Usage:
     result = predictor.predict_from_raw(eda_window=eda_array)
     print(result["prediction"])   # "excitement", "neutral" or "frustration"
     print(result["confidence"])   # e.g. 0.73
-    print(result["probabilities"])  # {"excitement": 0.73, "frustration": 0.27}
+    print(result["probabilities"])  # {"excitement": 0.73, "frustration": 0.18, "neutral": 0.09}
 
     # Save/load for deployment
     predictor.save("models/trained_model.pkl")
