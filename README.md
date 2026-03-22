@@ -28,7 +28,7 @@ emotion_recognition_system/
          │                          Maps video annotations → feature windows
          ▼
   models/train.py ────────────────► LOSO-CV (7 folds, one subject held out)
-         │                          RF + SVM × EDA-only / PPG-only / Combined
+         │                          RF + SVM × 7 fusion configurations
          ▼
   results/                         Metrics, confusion matrices, feature importance
 ```
@@ -83,7 +83,19 @@ ac-hri_cw/
 
 ## Models
 
-6 experiments: **Random Forest** and **SVM** × **EDA-only / PPG-only / Combined**, evaluated with Leave-One-Subject-Out cross-validation (7 folds). Results are written to `emotion_recognition_system/results/` after running the notebook.
+14 experiments: **Random Forest** and **SVM** across 7 modality/fusion configurations, evaluated with Leave-One-Subject-Out cross-validation (7 folds):
+
+| Configuration | Windows | Notes |
+|---|---|---|
+| No fusion – EDA-only | 88 | All labelled windows |
+| No fusion – PPG-only | 39 | Windows where PPG was successfully extracted |
+| Early fusion | 88 | All windows; missing PPG imputed per-fold |
+| Intermediate fusion | 88 | Per-modality PCA (95 % variance), then combined |
+| Intermediate fusion (Complete) | 39 | Same, PPG-available windows only |
+| Late fusion | 88 | Separate EDA + PPG models, soft-vote average |
+| Late fusion (Complete) | 39 | Same, PPG-available windows only |
+
+PPG features were extractable for 70 of 121 total windows (57.9 %); the remaining windows lacked a usable PPG signal after quality filtering. Results are written to `emotion_recognition_system/results/` after running the notebook.
 
 ---
 

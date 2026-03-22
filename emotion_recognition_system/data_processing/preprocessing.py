@@ -3,8 +3,12 @@
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
+from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import PCA
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.pipeline import Pipeline as SkPipeline
+from sklearn.preprocessing import StandardScaler
 
 
 def load_and_clean(csv_path):
@@ -53,6 +57,23 @@ def handle_missing(X_train, X_test):
     X_train_imputed = X_train.fillna(medians)
     X_test_imputed = X_test.fillna(medians)
     return X_train_imputed, X_test_imputed
+
+
+def build_fusion_preprocessor(eda_features, ppg_features, variance_threshold=0.95):
+    """
+    Build a ColumnTransformer that applies separate StandardScaler + PCA
+    to each modality's features for intermediate fusion.
+    """
+    return ColumnTransformer([
+        ('eda_pca', SkPipeline([
+            ('scaler', StandardScaler()),
+            ('pca', PCA(n_components=variance_threshold)),
+        ]), eda_features),
+        ('ppg_pca', SkPipeline([
+            ('scaler', StandardScaler()),
+            ('pca', PCA(n_components=variance_threshold)),
+        ]), ppg_features),
+    ])
 
 
 def run_loso_cv(estimator, X, y, groups):
